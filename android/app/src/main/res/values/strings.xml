@@ -1,0 +1,9 @@
+<resources>
+    <string name="app_name">SHOPPINGAPPS</string>
+    
+<string name="facebook_app_id">1172140724517186</string>
+<string name="fb_login_protocol_scheme">fb1234</string>
+<string name="facebook_client_token">8e2e5e10e47ff8f72ad37b855542953b</string>
+
+
+</resources>
