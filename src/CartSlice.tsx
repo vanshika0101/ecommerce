@@ -10,14 +10,9 @@ const CartSlice = createSlice({
     isError: false, // Tracks the error
     myCart: [], // Cart with products
     totalPrice: 0, // Total price
-    address: [], // Stores address information
-    userId: null, // Holds the logged-in user's ID
   },
 
   reducers: {
-    setUserId: (state, action) => {
-      state.userId = action.payload; // Update userId in the state
-    },
 
     addToCart: (state, action) => {
       const existProduct = state.myCart.find(

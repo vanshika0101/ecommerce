@@ -12,14 +12,14 @@ const DemoApp = () => {
   const navigation = useNavigation();
   const route = useRoute();  // Access route params
   const { userId } = route.params || {};  // Get userId from navigation params
-  //console.log(userId);
+  console.log(userId);
 
 
   const { isLoading, items, myCart } = useSelector((store) => store.products);
 
   useEffect(() => {
     dispatch(fetchProducts());
-  }, [dispatch]);
+  }, [dispatch,userId]);
 
   const showToast = () => {
     ToastAndroid.showWithGravityAndOffset(
@@ -33,44 +33,92 @@ const DemoApp = () => {
 
   const handleAddToCart = async (item) => {
     try {
-      // Dispatch action to add the item to the cart in Redux
-      dispatch(ProductActions.addToCart(item));
+      // Fetch user data from Firestore
       const user = await firestore().collection('users').doc(userId).get();
       console.log(user._data.cart);
+
       let tempcart = [];
       tempcart = user._data.cart;
+
       if (tempcart.length > 0) {
         let existing = false;
         tempcart.map(itm => {
           if (itm.id == item.id) {
             existing = true;
-            itm.data.qty = item.data.qty + 1;
+            // If qty doesn't exist, add it
+            if (!itm.data.qty) {
+              itm.data.qty = 1;  // Initialize qty if it's missing
+            } else {
+              itm.data.qty = itm.data.qty + 1;  // Increment qty
+            }
           }
         });
         if (existing == false) {
-          tempcart.push(item);
+          // If the item doesn't exist, add it with qty = 1
+          tempcart.push({ ...item, data: { ...item.data, qty: 1 } });
         }
+      } else {
+        // If cart is empty, push the item with qty = 1
+        tempcart.push({ ...item, data: { ...item.data, qty: 1 } });
       }
-      else {
-        tempcart.push(item);
-      }
-      console.log(tempcart);
-      console.log(itm.data.qty);
-      
 
+      console.log(tempcart);
+
+      // Update the cart in Firestore
       firestore().collection("users").doc(userId).update({
         cart: tempcart,
-      })
+      });
+      showToast();
 
-      // Add the item to Firestore in a "cart" collection
-    }
-
-
-    catch (error) {
+    } catch (error) {
       console.error('Error adding to cart:', error);
       showToast('Failed to add item to cart.');
     }
   };
+
+  const handleIncrement = async (item) => {
+    dispatch(ProductActions.incrementCounter(item.id));
+
+    try {
+      const user = await firestore().collection('users').doc(userId).get();
+      let tempCart = [...user._data.cart];
+
+      tempCart.map(itm => {
+        if (itm.id === item.id) {
+          itm.data.qty += 1;
+        }
+      });
+
+      await firestore().collection('users').doc(userId).update({
+        cart: tempCart,
+      });
+    } catch (error) {
+      console.error('Error updating Firestore:', error);
+    }
+  };
+
+  const handleDecrement = async (item) => {
+    dispatch(ProductActions.decrementCounter(item.id));
+
+    try {
+      const user = await firestore().collection('users').doc(userId).get();
+      let tempCart = [...user._data.cart];
+
+      tempCart.map(itm => {
+        if (itm.id === item.id && itm.data.qty > 1) {
+          itm.data.qty -= 1;
+        }
+      });
+
+      await firestore().collection('users').doc(userId).update({
+        cart: tempCart,
+      });
+    } catch (error) {
+      console.error('Error updating Firestore:', error);
+    }
+  };
+
+
 
   const getcount = (itemId) => {
     const productInCart = myCart.find((product) => product.id === itemId);
@@ -79,7 +127,7 @@ const DemoApp = () => {
 
   return (
     <View style={{ flex: 1 }}>
-      <TouchableOpacity onPress={() => navigation.navigate('Cart')} style={styles.button}>
+      <TouchableOpacity onPress={() => navigation.navigate('Cart', userId)} style={styles.button}>
         <Text style={styles.buttontxt}>Go to Cart</Text>
       </TouchableOpacity>
 
@@ -106,23 +154,23 @@ const DemoApp = () => {
                       </Text>
                       <Text style={styles.price}>{'\u20B9'}{item.price}</Text>
 
-                      {isInCart && (
+                      {/* {isInCart && (
                         <View style={styles.counterContainer}>
                           <TouchableOpacity
-                            onPress={() => dispatch(ProductActions.decrementCounter(item.id))}
+                            onPress={() => handleDecrement(item)}
                             style={styles.decrementButton}
                           >
                             <Text style={styles.incrementButtontxt}>-</Text>
                           </TouchableOpacity>
-                          <Text style={styles.container1}>{getcount(item.id)}</Text>
+                          <Text style={styles.container1}>{(getcount)}</Text>
                           <TouchableOpacity
-                            onPress={() => dispatch(ProductActions.incrementCounter(item.id))}
+                            onPress={() => handleIncrement(item)}
                             style={styles.incrementButton}
                           >
                             <Text style={styles.incrementButtontxt}>+</Text>
                           </TouchableOpacity>
                         </View>
-                      )}
+                      )} */}
 
                       <TouchableOpacity
                         style={styles.gobtn}

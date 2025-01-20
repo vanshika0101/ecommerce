@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -9,44 +9,156 @@ import {
   TouchableOpacity,
   Alert,
 } from 'react-native';
-import { useDispatch, useSelector } from 'react-redux';
-import { ProductActions } from './CartSlice'; // Assuming you have actions like 'clearCart'
-//import { AuthActions } from './authSlice'; // Assuming AuthActions manage user login/logout
-import { useNavigation } from '@react-navigation/native';
-import { GoogleSignin } from '@react-native-google-signin/google-signin'; // Ensure GoogleSignin is imported
+
+import { useNavigation, useRoute } from '@react-navigation/native';
+import { GoogleSignin } from '@react-native-google-signin/google-signin';
+import firestore from '@react-native-firebase/firestore';
 
 const Width = Dimensions.get('screen').width;
 const cardWidth = Width - 20;
 
 const Cart = () => {
-  const dispatch = useDispatch();
+  const route = useRoute();
   const navigation = useNavigation();
-  const selectedProducts = useSelector((state) => state.products.myCart);
-  const totalPrice = useSelector((state) => state.products.totalPrice);
+  const [cartItems, setCartItems] = useState([]);
+  const [totalPrice, setTotalPrice] = useState(0); // State for total price
+  const userId = route.params || {};  // Set initial userId from route params
 
-  // Check if cart is empty
-  const isCartEmpty = selectedProducts.length === 0;
+  // Fetch cart data whenever userId changes
+  useEffect(() => {
+    if (userId) {
+      fetchData();
+    }
+  }, [userId]);
 
-  // Logout function
-  const handleLogout = async () => {
-    dispatch(ProductActions.clearCart());
-
+  const fetchData = async () => {
     try {
-      await GoogleSignin.signOut(); // Sign out from Google if the user is logged in via Google
+      const userDoc = await firestore().collection('users').doc(userId).get();
+      const userCart = userDoc.exists ? userDoc.data().cart || [] : [];
+      setCartItems(userCart);
+
+      console.log(">>>>>>>>>>>>>>>>>",userDoc);
+      
+      console.log("<<<<<<<<<<<<<<<<<<<<<",userDoc.data());
+      
+
+      // Calculate and round total price
+      const total = Math.round(
+        userCart.reduce((acc, item) => acc + item.price * item.data.qty, 0)
+      );
+      setTotalPrice(total);
+
+      console.log('Fetched Cart:', userCart);
+      console.log('Total Price:', total);
+    } catch (error) {
+      console.error('Error fetching cart data:', error);
+    }
+  };
+
+  const isCartEmpty = cartItems.length === 0;
+
+  const handleLogout = async () => {
+    try {
+      await GoogleSignin.signOut();
       Alert.alert('Logged Out', 'You have been logged out.');
-      navigation.navigate('Login'); // Navigate back to login screen
+
+      // Reset userId after logout
+      //setUserId(null);
+      navigation.navigate('Login');
     } catch (error) {
       console.error('Logout Error:', error);
       Alert.alert('Error', 'Failed to log out. Please try again.');
     }
   };
 
-  // Decrement counter and automatically remove the item if count is 0
-  const handleDecrement = (item) => {
-    if (item.count > 1) {
-      dispatch(ProductActions.decrementCounter(item.id));
-    } else {
-      dispatch(ProductActions.deleteCart(item.id));
+  const handleIncrement = async (item) => {
+    try {
+      const userDoc = await firestore().collection('users').doc(userId).get();
+      let tempCart = [...userDoc.data().cart];
+
+      tempCart = tempCart.map((itm) => {
+        if (itm.id === item.id) {
+          itm.data.qty += 1;
+        }
+        return itm;
+      });
+
+      await firestore().collection('users').doc(userId).update({
+        cart: tempCart,
+      });
+
+      setCartItems(tempCart);
+
+      // Recalculate and round total price
+      const total = Math.round(
+        tempCart.reduce((acc, itm) => acc + itm.price * itm.data.qty, 0)
+      );
+      setTotalPrice(total);
+
+      console.log('Incremented Cart:', tempCart);
+    } catch (error) {
+      console.error('Error incrementing quantity:', error);
+    }
+  };
+
+  const handleDecrement = async (item) => {
+    try {
+      const userDoc = await firestore().collection('users').doc(userId).get();
+      let tempCart = [...userDoc.data().cart];
+
+      tempCart = tempCart
+        .map((itm) => {
+          if (itm.id === item.id) {
+            if (itm.data.qty >= 1) {
+              itm.data.qty -= 1;
+            }
+          }
+          return itm;
+        })
+        .filter((itm) => itm.data.qty >0);
+  
+
+      await firestore().collection('users').doc(userId).update({
+        cart: tempCart,
+      });
+
+      setCartItems(tempCart);
+
+      // Recalculate and round total price
+      const total = Math.round(
+        tempCart.reduce((acc, itm) => acc + itm.price * itm.data.qty, 0)
+      );
+      setTotalPrice(total);
+
+      console.log('Updated Cart after Decrement:', tempCart);
+    } catch (error) {
+      console.error('Error decrementing quantity:', error);
+    }
+  };
+
+  const handleDelete = async (item) => {
+    try {
+      const userDoc = await firestore().collection('users').doc(userId).get();
+      let tempCart = [...userDoc.data().cart];
+
+      tempCart = tempCart.filter((itm) => itm.id !== item.id);
+
+      await firestore().collection('users').doc(userId).update({
+        cart: tempCart,
+      });
+
+      setCartItems(tempCart);
+
+      // Recalculate and round total price
+      const total = Math.round(
+        tempCart.reduce((acc, itm) => acc + itm.price * itm.data.qty, 0)
+      );
+      setTotalPrice(total);
+
+      console.log('Deleted Item from Cart:', tempCart);
+    } catch (error) {
+      console.error('Error deleting item from Firestore:', error);
+      Alert.alert('Error', 'Failed to remove item from cart.');
     }
   };
 
@@ -57,7 +169,7 @@ const Cart = () => {
         <Text style={styles.emptyMessage}>Your cart is empty</Text>
       ) : (
         <FlatList
-          data={selectedProducts}
+          data={cartItems}
           keyExtractor={(item) => item.id.toString()}
           renderItem={({ item }) => (
             <View style={styles.itemContainer}>
@@ -68,21 +180,21 @@ const Cart = () => {
               </Text>
               <View style={styles.counterContainer}>
                 <TouchableOpacity
-                  onPress={() => handleDecrement(item)} // Use the updated decrement handler
+                  onPress={() => handleDecrement(item)}
                   style={styles.decrementButton}
                 >
                   <Text style={styles.incrementButtontxt}>-</Text>
                 </TouchableOpacity>
-                <Text style={styles.container1}>{item.count || 0}</Text>
+                <Text style={styles.container1}>{item.data.qty}</Text>
                 <TouchableOpacity
-                  onPress={() => dispatch(ProductActions.incrementCounter(item.id))}
+                  onPress={() => handleIncrement(item)}
                   style={styles.incrementButton}
                 >
                   <Text style={styles.incrementButtontxt}>+</Text>
                 </TouchableOpacity>
               </View>
               <TouchableOpacity
-                onPress={() => dispatch(ProductActions.deleteCart(item.id))}
+                onPress={() => handleDelete(item)}
                 style={styles.deleteButton}
               >
                 <Text style={styles.deleteButtonText}>DELETE</Text>
@@ -93,14 +205,12 @@ const Cart = () => {
       )}
 
       <View style={styles.footer}>
-        {/* Total Price */}
         <Text
-          style={[styles.totalPriceText, isCartEmpty && styles.disabledText]} // Add disabled style if cart is empty
+          style={[styles.totalPriceText, isCartEmpty && styles.disabledText]}
         >
           Total Price: {'\u20B9'}{totalPrice}
         </Text>
 
-        {/* Logout Button */}
         <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
           <Text style={styles.logoutButtonText}>Logout</Text>
         </TouchableOpacity>
@@ -110,6 +220,7 @@ const Cart = () => {
 };
 
 const styles = StyleSheet.create({
+  // (Same styles as before)
   container: {
     flex: 1,
     padding: 16,

@@ -8,10 +8,10 @@ import {
   TouchableOpacity,
   ActivityIndicator,
 } from 'react-native';
-import Icon from 'react-native-vector-icons/Ionicons'; // Import FontAwesome for icons
+import Icon from 'react-native-vector-icons/Ionicons';
 import firestore from '@react-native-firebase/firestore';
 import { GoogleSignin, statusCodes } from '@react-native-google-signin/google-signin';
-import { LoginManager, AccessToken } from 'react-native-fbsdk-next'; // Facebook SDK
+import { LoginManager, AccessToken } from 'react-native-fbsdk-next';
 import { useNavigation } from '@react-navigation/native';
 import auth from '@react-native-firebase/auth';
 
@@ -22,17 +22,14 @@ function Login() {
   const [error, setError] = useState('');
   const navigation = useNavigation();
 
-  // Configure Google Sign-In once when the component is mounted
   useEffect(() => {
     GoogleSignin.configure({
-      webClientId: '508522032375-r0j40s15nuk0mbruat4gn83sqmh7od93.apps.googleusercontent.com', // Replace with your Web Client ID from Firebase
+      webClientId: '508522032375-r0j40s15nuk0mbruat4gn83sqmh7od93.apps.googleusercontent.com',
     });
   }, []);
 
-  // Helper: Validate Email Format
   const isValidEmail = (email) => /^[a-zA-Z0-9._%+-]+@gmail\.com$/.test(email);
 
-  // Handle Email/Password Login
   const handleLogin = async () => {
     if (!email || !password) {
       Alert.alert('Error', 'Please fill in all fields.');
@@ -52,17 +49,23 @@ function Login() {
       const user = userCredential.user;
       console.log('User Login Successful:', user);
 
-      // After successful email login, store userId (UID) and email in Firestore if not already present
-      const docId = user.email.toLowerCase();
-      await firestore().collection('users').doc(docId).set({
-        email: user.email,
-        userId: user.uid,  // Save user UID to Firestore
-      }, { merge: true });
+      const userDoc = await firestore().collection('users').doc(user.uid).get();
 
-      // Navigate to DemoApp with userId
-      navigation.navigate('DemoApp', { userId: user.uid });
-      console.log(user.uid);
-      
+      if (userDoc.exists) {
+        const userData = userDoc.data();
+        const cart = userData.cart || []; // Fetch the existing cart or default to an empty array
+
+        // Navigate to DemoApp with userId and cart
+        navigation.navigate('DemoApp', { userId: user.uid, cart });
+      } else {
+        // If the user document doesn't exist, create it with an empty cart
+        await firestore().collection('users').doc(user.uid).set({
+          email: user.email,
+          userId: user.uid,
+          cart: [],
+        });
+        navigation.navigate('DemoApp', { userId: user.uid, cart: [] });
+      }
     } catch (err) {
       console.error('Login Error:', err);
       setError('Invalid email or password. Please try again.');
@@ -71,31 +74,37 @@ function Login() {
     }
   };
 
-  // Handle Google Sign-In
   const onGoogleButtonPress = async () => {
-    setLoading(true); // Start loading state
-    setError(''); // Reset any previous error message
-
+    setLoading(true);
+    setError('');
     try {
-      // Ensure Google Play Services are available on the device
       await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
-
-      // Sign-in with Google
       const userInfo = await GoogleSignin.signIn();
       console.log('Google Sign-In Success:', userInfo);
 
-      const email = userInfo.user.email;
-      const userId = userInfo.user.id;
+      const userId = userInfo.data?.user.id;
+      const userDoc = await firestore().collection('users').doc(userId).get();
 
-      // Save the user's details in Firestore
-      const docId = email.toLowerCase();
-      await firestore().collection('users').doc(docId).set({
-        email: email,
-        userId: userId,  // Save userId to Firestore
-      }, { merge: true });
+      if (userDoc.exists) {
+        console.log("<<<<<<<<<<<<<<<<");
+        
+        // const userData = userDoc.data();
+        // const cart = userData.cart || [];
+        // console.log("<<<<<<<<<<<",userData);
+        // console.log(">>>>>>>>>>",cart);
+        
+        
 
-      // Navigate to DemoApp with userId
-      navigation.navigate('DemoApp', { userId: userId });
+        // // Navigate to DemoApp with userId and cart
+        navigation.navigate('DemoApp', { userId});
+      } else {
+        await firestore().collection('users').doc(userId).set({
+          email: userInfo.data?.user.email,
+          userId,
+          cart: [],
+        });
+        navigation.navigate('DemoApp', { userId, cart: [] });
+      }
     } catch (error) {
       console.error('Google Sign-In Error:', error);
       if (error.code === statusCodes.SIGN_IN_CANCELLED) {
@@ -108,63 +117,55 @@ function Login() {
         setError('Google Sign-In failed. Please try again.');
       }
     } finally {
-      setLoading(false); // Stop loading state after the process completes
+      setLoading(false);
     }
   };
 
-  // Handle Facebook Login
   const onFacebookButtonPress = async () => {
-    setLoading(true); // Start loading state
-    setError(''); // Reset any previous error message
-
+    setLoading(true);
+    setError('');
     try {
-      console.log("Starting Facebook login...");
-
-      // Facebook Login
+      console.log('Starting Facebook login...');
       const result = await LoginManager.logInWithPermissions(['public_profile', 'email']);
-      console.log("Facebook result", result);
 
       if (result.isCancelled) {
-        console.log("Facebook login cancelled.");
         setError('Login cancelled');
         return;
       }
 
-      console.log("Facebook login successful!");
-
-      // Get the access token
       const data = await AccessToken.getCurrentAccessToken();
       if (!data) {
         setError('Failed to get access token');
         return;
       }
 
-      console.log('Facebook Login Success:', data);
-
-      // Get Facebook user info
       const userId = data.userID;
-      const email = data.email || 'facebookuser@example.com';  // Fallback in case email is not available
+      const userDoc = await firestore().collection('users').doc(userId).get();
 
-      // Save the user's details in Firestore
-      await firestore().collection('users').doc(userId).set({
-        email: email,
-        userId: userId,  // Save userId to Firestore
-      }, { merge: true });
+      if (userDoc.exists) {
+        const userData = userDoc.data();
+        const cart = userData.cart || [];
 
-      // Navigate to DemoApp with userId
-      navigation.navigate('DemoApp', { userId: userId });
+        // Navigate to DemoApp with userId and cart
+        navigation.navigate('DemoApp', { userId, cart });
+      } else {
+        await firestore().collection('users').doc(userId).set({
+          userId,
+          cart: [],
+        });
+        navigation.navigate('DemoApp', { userId, cart: [] });
+      }
     } catch (error) {
       console.error('Facebook Login Error:', error);
       setError('Facebook Sign-In failed. Please try again.');
     } finally {
-      setLoading(false); // Stop loading state after the process completes
+      setLoading(false);
     }
   };
 
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Login</Text>
-
       {/* Email Input */}
       <TextInput
         style={styles.input}
@@ -175,7 +176,6 @@ function Login() {
         value={email}
         onChangeText={setEmail}
       />
-
       {/* Password Input */}
       <TextInput
         style={styles.input}
@@ -185,7 +185,6 @@ function Login() {
         value={password}
         onChangeText={setPassword}
       />
-
       {/* Login Button */}
       <TouchableOpacity
         style={[styles.button, { backgroundColor: loading ? '#A5D6A7' : '#4CAF50' }]}
@@ -194,56 +193,30 @@ function Login() {
       >
         {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Login</Text>}
       </TouchableOpacity>
-
-      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-        <Text>Don't have an account? </Text>
-        <TouchableOpacity onPress={() => navigation.navigate('Signup')}>
-          <Text style={{ color: 'blue' }}>Sign up</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Divider */}
       <Text style={styles.divider}>OR</Text>
-
       {/* Google Sign-In Button */}
       <TouchableOpacity
         style={[styles.button, { backgroundColor: loading ? '#90CAF9' : '#4285F4' }]}
         onPress={onGoogleButtonPress}
         disabled={loading}
       >
-        {loading ? (
-          <ActivityIndicator color="#fff" />
-        ) : (
-          <View style={styles.buttonContent}>
-            <Icon name="logo-google" size={24} color="#fff" style={styles.icon} />
-            <Text style={styles.buttonText}>Sign In with Google</Text>
-          </View>
-        )}
+        {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Sign In with Google</Text>}
       </TouchableOpacity>
-
       {/* Facebook Sign-In Button */}
       <TouchableOpacity
         style={[styles.button, { backgroundColor: loading ? '#90CAF9' : '#3b5998' }]}
         onPress={onFacebookButtonPress}
         disabled={loading}
       >
-        {loading ? (
-          <ActivityIndicator color="#fff" />
-        ) : (
-          <View style={styles.buttonContent}>
-            <Icon name="logo-facebook" size={24} color="#fff" style={styles.icon} />
-            <Text style={styles.buttonText}>Sign In with Facebook</Text>
-          </View>
-        )}
+        {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Sign In with Facebook</Text>}
       </TouchableOpacity>
-
-      {/* Error Message */}
       {error && <Text style={styles.errorText}>{error}</Text>}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  // Add your styles here
   container: {
     flex: 1,
     justifyContent: 'center',
